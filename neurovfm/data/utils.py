@@ -236,3 +236,40 @@ def preprocess_image(img_sitk):
     resized_img_sitk = sitk.Extract(resized_img_sitk, crop_size, start_index)
     
     return resized_img_sitk
+
+
+def crop_to_patch_divisible(img_sitk, z_dim=2):
+    """
+    Crop an image so dimensions are divisible by patch sizes.
+    
+    This is a lightweight preprocessing step for images that are already in a
+    standard space (e.g., MNI152-registered NumPy arrays). It only performs
+    center-cropping — no reorientation, resampling, or spacing changes.
+    
+    Divisibility requirements:
+    - Through-plane (slice) dimension: divisible by 4
+    - In-plane dimensions: divisible by 16
+    
+    Args:
+        img_sitk (SimpleITK.Image): Input image.
+        z_dim (int): Which dimension (0, 1, or 2) is the slice/through-plane
+            dimension. Default 2.
+    
+    Returns:
+        SimpleITK.Image: Cropped image with patch-divisible dimensions.
+    """
+    current_size = img_sitk.GetSize()
+    
+    start_index, crop_size = [], []
+    for idx in range(3):
+        if idx == z_dim:
+            # Slice dimension: make divisible by 4
+            start_index.append((current_size[idx] % 4) // 2)
+            crop_size.append((current_size[idx] // 4) * 4)
+        else:
+            # In-plane dimensions: make divisible by 16
+            start_index.append((current_size[idx] % 16) // 2)
+            crop_size.append((current_size[idx] // 16) * 16)
+    
+    cropped = sitk.Extract(img_sitk, crop_size, start_index)
+    return cropped

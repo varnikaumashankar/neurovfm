@@ -92,10 +92,11 @@ class StudyPreprocessor:
         if isinstance(study_path, (str, Path)):
             study_path = Path(study_path)
             if study_path.is_dir():
-                # Load all NIfTI/DICOM files in directory
+                # Load all NIfTI/DICOM/NumPy files in directory
                 image_paths = sorted(list(study_path.glob("*.nii.gz")) + 
                                     list(study_path.glob("*.nii")) +
-                                    list(study_path.glob("*.dcm")))
+                                    list(study_path.glob("*.dcm")) +
+                                    list(study_path.glob("*.npy")))
             else:
                 # Single file
                 image_paths = [study_path]
