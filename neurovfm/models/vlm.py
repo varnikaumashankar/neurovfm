@@ -53,13 +53,18 @@ class LanguageModel(nn.Module):
         self.use_gradient_checkpointing = use_gradient_checkpointing
         self.lora_params = lora_params
 
+        import flash_attn
+        attn_impl = "flash_attention_2"
+        if getattr(flash_attn, "__version__", "") == "0.0.0+cpu_shim":
+            attn_impl = "sdpa"
+
         # init LLM and tokenizer
         self.llm: PreTrainedModel = AutoModelForCausalLM.from_pretrained(
             model_name_or_path,
             trust_remote_code=True,
             torch_dtype=torch.bfloat16,
             low_cpu_mem_usage=True,
-            attn_implementation="flash_attention_2",
+            attn_implementation=attn_impl,
         )
         self.tokenizer = AutoTokenizer.from_pretrained(
             model_name_or_path,

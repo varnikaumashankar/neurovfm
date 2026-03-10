@@ -73,9 +73,10 @@ class PatchEmbed(nn.Module):
         self.patch_d_size = patch_d_size
 
         if fused_bias_fc and FusedDense is None:
-            raise ImportError("fused_dense is not installed")
-
-        linear_cls = nn.Linear if not fused_bias_fc or not bias else FusedDense
+            linear_cls = nn.Linear
+        else:
+            linear_cls = nn.Linear if not fused_bias_fc or not bias else FusedDense
+            
         self.proj = linear_cls(
             in_chans * patch_hw_size[0] * patch_hw_size[1] * patch_d_size, 
             embed_dim, 

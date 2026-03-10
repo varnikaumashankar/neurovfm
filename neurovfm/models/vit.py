@@ -27,12 +27,40 @@ try:
 except ImportError:
     layer_norm_fn, RMSNorm = None, None
 
+import torch.nn as nn
+
 try:
     from flash_attn.ops.fused_dense import ColumnParallelLinear, FusedDense, RowParallelLinear
+    if FusedDense is None:
+        raise ImportError
 except ImportError:
-    FusedDense, ColumnParallelLinear, RowParallelLinear = None, None, None
+    class FusedDense(nn.Linear):
+        def __init__(self, in_features, out_features, bias=True, **kwargs):
+            super().__init__(in_features, out_features, bias=bias)
+    ColumnParallelLinear, RowParallelLinear = None, None
 
-from flash_attn.modules.mlp import FusedMLP
+try:
+    from flash_attn.modules.mlp import FusedMLP
+    if FusedMLP is None:
+        raise ImportError
+except ImportError:
+    class FusedMLP(nn.Module):
+        def __init__(self, in_features, hidden_features=None, out_features=None,
+                     activation='gelu_approx', checkpoint_lvl=0, return_residual=False, **kwargs):
+            super().__init__()
+            out_features = out_features or in_features
+            hidden_features = hidden_features or in_features
+            self.return_residual = return_residual
+            self.fc1 = nn.Linear(in_features, hidden_features)
+            self.fc2 = nn.Linear(hidden_features, out_features)
+            self.activation = nn.GELU()
+        def forward(self, x):
+            y = self.fc1(x)
+            y = self.activation(y)
+            y = self.fc2(y)
+            if self.return_residual: return y, x
+            return y
+
 try:
     from flash_attn.ops.triton.layer_norm import layer_norm_fn
 except ImportError:
