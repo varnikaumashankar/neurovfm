@@ -16,6 +16,9 @@ try:
 except ImportError:
     FusedDense = None
 
+if FusedDense is None:
+    FusedDense = nn.Linear
+
 
 class PatchEmbed(nn.Module):
     """
@@ -71,9 +74,6 @@ class PatchEmbed(nn.Module):
         patch_hw_size = _pair(patch_hw_size)
         self.patch_hw_size = patch_hw_size
         self.patch_d_size = patch_d_size
-
-        if fused_bias_fc and FusedDense is None:
-            raise ImportError("fused_dense is not installed")
 
         linear_cls = nn.Linear if not fused_bias_fc or not bias else FusedDense
         self.proj = linear_cls(

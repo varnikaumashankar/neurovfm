@@ -51,8 +51,9 @@ def main():
         embeddings = encoder.embed(batch)
 
         emb_path = os.path.join(emb_dir, f"{subject_id}_encoder_embeddings.pt")
-        torch.save(embeddings.cpu().detach(), emb_path)
-        logging.info(f"Saved embeddings {embeddings.shape} → {emb_path}")
+        embeddings_cpu = embeddings.cpu().detach()
+        torch.save(embeddings_cpu, emb_path)
+        logging.info(f"Saved embeddings {embeddings_cpu.shape} → {emb_path}")
 
         # Free encoder from GPU memory before loading next model
         del encoder
@@ -70,13 +71,15 @@ def main():
             dx_head = load_diagnostic_head("mlinslab/neurovfm-dx-mri", device=device)
 
         preds = dx_head.predict(embeddings, batch)
-        study_preds = preds[0] if isinstance(preds[0], list) else preds
+        # For single study, preds is a list of tuples: [(label, prob, pred), ...]
+        # For multiple studies, preds is a list of lists
+        study_preds = preds
 
         json_preds = {
             label: {
-                "probability": prob,
-                "predicted_class": pred_class,
-                "status": "POSITIVE" if pred_class == 1 else "negative"
+                "probability": float(prob),
+                "predicted_class": int(pred_class),
+                "status": "POSITIVE" if int(pred_class) == 1 else "negative"
             }
             for label, prob, pred_class in study_preds
         }
@@ -85,8 +88,10 @@ def main():
             json.dump(json_preds, f, indent=4)
         logging.info(f"Saved diagnostic predictions → {dx_path}")
 
-        # Free diagnostic head before loading VLM
+        # Free diagnostic head and embeddings before loading VLM
         del dx_head
+        del embeddings
+        del embeddings_cpu
         torch.cuda.empty_cache()
 
         # ----------------------------------------------------------------

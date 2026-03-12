@@ -19,8 +19,20 @@ from torchvision.ops import StochasticDepth
 from torch.utils.checkpoint import checkpoint
 from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
 
-from flash_attn import flash_attn_qkvpacked_func, flash_attn_varlen_qkvpacked_func, flash_attn_varlen_kvpacked_func
-from flash_attn.layers.patch_embed import PatchEmbed
+try:
+    from flash_attn import (
+        flash_attn_qkvpacked_func,
+        flash_attn_varlen_qkvpacked_func,
+        flash_attn_varlen_kvpacked_func,
+    )
+    HAS_FLASH_ATTN = True
+except Exception:
+    flash_attn_qkvpacked_func = None
+    flash_attn_varlen_qkvpacked_func = None
+    flash_attn_varlen_kvpacked_func = None
+    HAS_FLASH_ATTN = False
+
+from neurovfm.models.patch_embed import PatchEmbed
 
 try:
     from flash_attn.ops.triton.layer_norm import layer_norm_fn, RMSNorm
@@ -32,11 +44,55 @@ try:
 except ImportError:
     FusedDense, ColumnParallelLinear, RowParallelLinear = None, None, None
 
-from flash_attn.modules.mlp import FusedMLP
+try:
+    from flash_attn.modules.mlp import FusedMLP
+except ImportError:
+    FusedMLP = None
 try:
     from flash_attn.ops.triton.layer_norm import layer_norm_fn
 except ImportError:
     layer_norm_fn = None
+
+if RMSNorm is None:
+    RMSNorm = ()
+
+if FusedDense is None:
+    FusedDense = nn.Linear
+
+if FusedMLP is None:
+    class FusedMLP(nn.Module):
+        def __init__(self, in_features, hidden_features, checkpoint_lvl=0, return_residual=False):
+            super().__init__()
+            factory_kwargs = {'device': 'cuda', 'dtype': torch.bfloat16}
+            self.fc1 = nn.Linear(in_features, hidden_features, **factory_kwargs)
+            self.act = nn.GELU()
+            self.fc2 = nn.Linear(hidden_features, in_features, **factory_kwargs)
+
+        def forward(self, x):
+            return self.fc2(self.act(self.fc1(x)))
+
+if layer_norm_fn is None:
+    def layer_norm_fn(
+        x,
+        weight,
+        bias,
+        residual=None,
+        eps=1e-6,
+        dropout_p=0.0,
+        rowscale=None,
+        prenorm=True,
+        residual_in_fp32=True,
+        is_rms_norm=False,
+    ):
+        if rowscale is not None:
+            x = x * rowscale.unsqueeze(-1)
+        if dropout_p > 0:
+            x = F.dropout(x, p=dropout_p, training=True)
+        residual = x if residual is None else residual + x
+        normed = F.layer_norm(residual, weight.shape, weight, bias, eps)
+        if prenorm:
+            return normed, residual
+        return normed
 
 MLP_CHECKPOINT_LVL = 2
 

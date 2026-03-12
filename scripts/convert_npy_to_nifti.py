@@ -56,6 +56,7 @@ def main():
             img.SetDirection(identity)
 
             sitk.WriteImage(img, output_path)
+            os.remove(npy_path)
             logging.info(f"Converted: {filename} → {os.path.basename(output_path)}")
 
         except Exception as e:
