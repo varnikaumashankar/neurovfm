@@ -31,6 +31,36 @@ echo "Activating pre-built virtual environment at $VENV_DIR..."
 source "$VENV_DIR/bin/activate"
 echo "✓ Virtual environment activated"
 
+echo "Python executable:"
+which python
+python -c "import sys; print(sys.executable)"
+
+echo "FlashAttention check:"
+python - <<'PY'
+import sys
+print("sys.path[0:5]=", sys.path[:5])
+
+try:
+    import flash_attn
+    print("flash_attn version:", getattr(flash_attn, "__version__", "unknown"))
+    print("flash_attn file:", flash_attn.__file__)
+except Exception as e:
+    print("flash_attn import failed:", repr(e))
+
+try:
+    import fused_dense_lib
+    print("fused_dense_lib import OK:", fused_dense_lib)
+except Exception as e:
+    print("fused_dense_lib import failed:", repr(e))
+
+try:
+    from flash_attn.ops.fused_dense import FusedDense
+    print("FusedDense import OK")
+except Exception as e:
+    print("FusedDense import failed:", repr(e))
+PY
+
+
 if [ -n "${HF_TOKEN:-}" ]; then
     export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
 elif [ -n "${HUGGING_FACE_HUB_TOKEN:-}" ]; then
@@ -41,7 +71,7 @@ echo "Verifying environment..."
 python -c "import torch; print('torch=', torch.__version__, 'cuda=', torch.version.cuda)"
 python "$REPO_DIR/scripts/extract_embeddings.py" --help >/dev/null
 
-INPUT_NPY_DIR="/home/chyhsu/Documents/data/batch_7"
+INPUT_NPY_DIR="/home/chyhsu/Documents/data/batch_8"
 NIFTI_DIR="/home/chyhsu/Documents/nii_gz"
 
 export PYTHONPATH="$REPO_DIR:$PYTHONPATH"

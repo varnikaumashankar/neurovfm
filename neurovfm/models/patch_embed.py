@@ -11,13 +11,7 @@ from einops import rearrange
 from torch import _assert
 from torch.nn.modules.utils import _pair
 
-try:
-    from flash_attn.ops.fused_dense import FusedDense
-except ImportError:
-    FusedDense = None
-
-if FusedDense is None:
-    FusedDense = nn.Linear
+from flash_attn.ops.fused_dense import FusedDense
 
 
 class PatchEmbed(nn.Module):

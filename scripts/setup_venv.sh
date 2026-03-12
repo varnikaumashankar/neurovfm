@@ -31,13 +31,19 @@ TORCHVISION_VERSION="0.20.0"
 TORCHAUDIO_VERSION="2.5.0"
 TORCH_SCATTER_WHEEL_URL="https://data.pyg.org/whl/torch-2.5.0+cu118.html"
 
-TRY_FLASH_ATTN="false"
-FLASH_ATTN_VERSION="2.5.8"
+LOG_DIR="/home/chyhsu/Documents/logs"
+INSTALL_FLASH_ATTN="true"
+FLASH_ATTN_VERSION="2.6.3"
+INSTALL_FUSED_DENSE_LIB="true"
+MAX_JOBS="${MAX_JOBS:-4}"
+NVCC_THREADS="${NVCC_THREADS:-2}"
 
 module purge
 module load "$PYTHON_MODULE"
 module load "$CUDA_MODULE"
 module load "$GCC_MODULE"
+
+mkdir -p "$LOG_DIR"
 
 echo "Loaded modules:"
 module list 2>&1 || true
@@ -131,36 +137,52 @@ print("torch.version.cuda:", torch.version.cuda)
 print("torch.cuda.is_available():", torch.cuda.is_available())
 PY
 
-if [ "$TRY_FLASH_ATTN" = "true" ]; then
-    echo "Trying flash-attn as best-effort only..."
-    export MAX_JOBS=1
-    export NVCC_THREADS=1
+if [ "$INSTALL_FLASH_ATTN" = "true" ]; then
+    echo "===== Installing flash-attn ====="
+    export MAX_JOBS
+    export NVCC_THREADS
 
-    python -m pip uninstall -y flash-attn || true
+    python -m pip uninstall -y flash-attn fused-dense-lib || true
     rm -rf ~/.cache/uv ~/.cache/pip /tmp/pip-install-* /tmp/pip-ephem-wheel-cache-* || true
 
-    set +e
     python -m pip install \
         --no-build-isolation \
-        --no-binary :all: \
         --no-cache-dir \
-        "flash-attn==$FLASH_ATTN_VERSION"
+        -v \
+        "flash-attn==$FLASH_ATTN_VERSION" \
+        2>&1 | tee "$LOG_DIR/flashattn_build_${SLURM_JOB_ID:-manual}.full.log"
 
+    if [ "$INSTALL_FUSED_DENSE_LIB" = "true" ]; then
+        echo "===== Installing fused_dense_lib ====="
+        python -m pip install \
+            --no-build-isolation \
+            -v \
+            "git+https://github.com/Dao-AILab/flash-attention@v${FLASH_ATTN_VERSION}#subdirectory=csrc/fused_dense_lib" \
+            2>&1 | tee "$LOG_DIR/fused_dense_install_${SLURM_JOB_ID:-manual}.full.log"
+    fi
+
+    echo "===== Verifying flash-attn / fused_dense ====="
     python - <<'PY'
-try:
-    import flash_attn
-    print("flash_attn import ok")
-except Exception as e:
-    print("flash_attn import failed:", repr(e))
+import torch
+print("torch:", torch.__version__, "cuda:", torch.version.cuda)
+print("cuda available:", torch.cuda.is_available())
+
+import flash_attn
+print("flash_attn version:", getattr(flash_attn, "__version__", "unknown"))
+print("flash_attn file:", flash_attn.__file__)
+
+import fused_dense_lib
+print("fused_dense_lib OK:", fused_dense_lib)
+
+from flash_attn.ops.fused_dense import FusedDense
+print("FusedDense import OK:", FusedDense)
 PY
-    set -e
 else
-    echo "Skipping flash-attn install on this cluster."
+    echo "Skipping flash-attn install."
 fi
 
 echo "========================================"
 echo "Setup completed"
 echo "Venv location: $VENV_DIR"
-echo "Note: neurovfm import may still fail unless flash-attn is available or the code is patched to use a fallback."
 date
 echo "========================================"
