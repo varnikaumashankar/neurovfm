@@ -3,11 +3,12 @@
 #SBATCH --partition=spgpu
 #SBATCH --account=eecs545w26_class
 #SBATCH --gpus=1
-#SBATCH --time=02:00:00
+#SBATCH --time=06:00:00
 #SBATCH --mem=64GB
 #SBATCH --cpus-per-task=4
-#SBATCH --output=/home/chyhsu/Documents/logs/neurovfm_setup_glibc28_%j.log
-#SBATCH --error=/home/chyhsu/Documents/logs/neurovfm_setup_glibc28_%j.err
+#SBATCH --output=$ROOT_DIR/logs/neurovfm_setup_%j.log
+#SBATCH --error=$ROOT_DIR/logs/neurovfm_setup_%j.err
+
 
 set -euo pipefail
 
@@ -17,8 +18,9 @@ echo "Host: $(hostname)"
 date
 echo "========================================"
 
-PROJECT_DIR="/home/chyhsu/Documents/neurovfm"
-VENV_DIR="/home/chyhsu/Documents/neurovfm_venv_glibc28"
+ROOT_DIR="/home/chyhsu/Documents" # TODO: change this to your root directory
+PROJECT_DIR="$ROOT_DIR/neurovfm" # TODO: change this to your project directory
+VENV_DIR="$ROOT_DIR/neurovfm_venv"  
 PYTHON_BIN="/sw/pkgs/arc/python/3.10.4/bin/python3"
 
 PYTHON_MODULE="python/3.10.4"
@@ -31,7 +33,7 @@ TORCHVISION_VERSION="0.20.0"
 TORCHAUDIO_VERSION="2.5.0"
 TORCH_SCATTER_WHEEL_URL="https://data.pyg.org/whl/torch-2.5.0+cu118.html"
 
-LOG_DIR="/home/chyhsu/Documents/logs"
+LOG_DIR="$ROOT_DIR/logs"
 INSTALL_FLASH_ATTN="true"
 FLASH_ATTN_VERSION="2.6.3"
 INSTALL_FUSED_DENSE_LIB="true"
