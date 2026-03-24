@@ -73,8 +73,8 @@ echo "Verifying environment..."
 python -c "import torch; print('torch=', torch.__version__, 'cuda=', torch.version.cuda)"
 python "$REPO_DIR/scripts/extract_embeddings.py" --help >/dev/null
 
-BATCH_START="${BATCH_START:-1}"
-BATCH_END="${BATCH_END:-8}"
+BATCH_START="${BATCH_START:-11}"
+BATCH_END="${BATCH_END:-21}"
 if [ -n "${BATCH_ID:-}" ]; then
     BATCH_START="$BATCH_ID"
     BATCH_END="$BATCH_ID"
@@ -96,9 +96,9 @@ for BATCH_ID in $(seq "$BATCH_START" "$BATCH_END"); do
     BASE_OUT_DIR="/home/chyhsu/Documents/output/batch_${BATCH_ID}"
     EMBEDDING_DIR="$BASE_OUT_DIR"
 
-    REMOTE_BATCH_NPY_PATH="${RCLONE_REMOTE}:${RCLONE_BASE_PATH}/batches/batch_${BATCH_ID}"
-    REMOTE_NIFTI_PATH="${RCLONE_REMOTE}:${RCLONE_BASE_PATH}/nii_gz/batch_${BATCH_ID}"
-    REMOTE_EMBEDDING_PATH="${RCLONE_REMOTE}:${RCLONE_BASE_PATH}/embeddings/batch_${BATCH_ID}"
+    REMOTE_BATCH_NPY_PATH="${RCLONE_REMOTE}:${RCLONE_BASE_PATH}/train_batches/batch_${BATCH_ID}"
+    REMOTE_NIFTI_PATH="${RCLONE_REMOTE}:${RCLONE_BASE_PATH}/train_nii_gz/batch_${BATCH_ID}"
+    REMOTE_EMBEDDING_PATH="${RCLONE_REMOTE}:${RCLONE_BASE_PATH}/train_embeddings/batch_${BATCH_ID}"
 
     echo "========================================================"
     echo "Batch ${BATCH_ID}"

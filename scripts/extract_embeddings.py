@@ -26,7 +26,7 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     subject_id = get_subject_id(args.study_path)
 
-    emb_dir = os.path.join(args.output_base_dir, "embedding")
+    emb_dir = os.path.join(args.output_base_dir)
     os.makedirs(emb_dir, exist_ok=True)
 
     try:
