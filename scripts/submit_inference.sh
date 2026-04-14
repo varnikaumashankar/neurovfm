@@ -11,6 +11,8 @@
 
 set -e
 
+mkdir -p /home/chyhsu/Documents/logs
+
 REPO_DIR="/home/chyhsu/Documents/neurovfm"
 
 echo "Loading required modules..."
@@ -69,12 +71,14 @@ elif [ -n "${HUGGING_FACE_HUB_TOKEN:-}" ]; then
     export HF_TOKEN="$HUGGING_FACE_HUB_TOKEN"
 fi
 
+export HF_HUB_OFFLINE=1
+
 echo "Verifying environment..."
 python -c "import torch; print('torch=', torch.__version__, 'cuda=', torch.version.cuda)"
 python "$REPO_DIR/scripts/extract_embeddings.py" --help >/dev/null
 
-BATCH_START="${BATCH_START:-11}"
-BATCH_END="${BATCH_END:-21}"
+BATCH_START="${BATCH_START:-6}"
+BATCH_END="${BATCH_END:-10}"
 if [ -n "${BATCH_ID:-}" ]; then
     BATCH_START="$BATCH_ID"
     BATCH_END="$BATCH_ID"
@@ -91,42 +95,54 @@ if ! command -v rclone >/dev/null 2>&1; then
 fi
 
 for BATCH_ID in $(seq "$BATCH_START" "$BATCH_END"); do
-    INPUT_NPY_DIR="/home/chyhsu/Documents/data/batch_${BATCH_ID}"
     NIFTI_DIR="/home/chyhsu/Documents/nii_gz/batch_${BATCH_ID}"
-    BASE_OUT_DIR="/home/chyhsu/Documents/output/batch_${BATCH_ID}"
-    EMBEDDING_DIR="$BASE_OUT_DIR"
+    EMBEDDING_DIR="/home/chyhsu/Documents/output/batch_${BATCH_ID}"
+    COORDS_DIR="/home/chyhsu/Documents/output_coords/batch_${BATCH_ID}"
 
-    REMOTE_BATCH_NPY_PATH="${RCLONE_REMOTE}:${RCLONE_BASE_PATH}/train_batches/batch_${BATCH_ID}"
     REMOTE_NIFTI_PATH="${RCLONE_REMOTE}:${RCLONE_BASE_PATH}/train_nii_gz/batch_${BATCH_ID}"
     REMOTE_EMBEDDING_PATH="${RCLONE_REMOTE}:${RCLONE_BASE_PATH}/train_embeddings/batch_${BATCH_ID}"
+    REMOTE_COORDS_PATH="${RCLONE_REMOTE}:${RCLONE_BASE_PATH}/train_coords/batch_${BATCH_ID}"
 
     echo "========================================================"
     echo "Batch ${BATCH_ID}"
-    echo "Input remote: ${REMOTE_BATCH_NPY_PATH}"
+    echo "Input remote: ${REMOTE_NIFTI_PATH}"
+    echo "Embedding remote: ${REMOTE_EMBEDDING_PATH}"
+    echo "Coords remote: ${REMOTE_COORDS_PATH}"
     echo "========================================================"
 
     echo "Preparing local batch directories..."
-    mkdir -p "$INPUT_NPY_DIR" "$NIFTI_DIR" "$EMBEDDING_DIR"
+    mkdir -p "$NIFTI_DIR" "$EMBEDDING_DIR" "$COORDS_DIR"
 
-    echo "Downloading batch_${BATCH_ID} .npy files from ${REMOTE_BATCH_NPY_PATH} ..."
-    rclone copy "$REMOTE_BATCH_NPY_PATH" "$INPUT_NPY_DIR" --include "*.npy"
-
-    echo "Converting .npy files to .nii.gz..."
-    python "$REPO_DIR/scripts/convert_npy_to_nifti.py" --input_dir "$INPUT_NPY_DIR" --output_dir "$NIFTI_DIR"
+    echo "Downloading batch_${BATCH_ID} .nii.gz files from ${REMOTE_NIFTI_PATH} ..."
+    rclone copy "$REMOTE_NIFTI_PATH" "$NIFTI_DIR" --include "*.nii.gz"
 
     echo "--------------------------------------------------------"
     echo "Starting NeuroVFM Embedding Extraction on $HOSTNAME"
     echo "Target Modality: $MODALITY"
-    echo "Base Output Directory: $BASE_OUT_DIR"
+    echo "Embedding Output Directory: $EMBEDDING_DIR"
+    echo "Coords Output Directory: $COORDS_DIR"
     echo "--------------------------------------------------------"
 
     COUNT=0
+    SKIP_COUNT=0
     MAX_FILES=
 
     for INPUT_FILE in "$NIFTI_DIR"/*.nii.gz; do
         if [ ! -f "$INPUT_FILE" ]; then
             echo "No .nii.gz files found in $NIFTI_DIR. Skipping."
             break
+        fi
+        INPUT_BASENAME="$(basename "$INPUT_FILE")"
+        SUBJECT_ID="${INPUT_BASENAME%%_*}"
+        if [[ "$SUBJECT_ID" != sub-* ]]; then
+            SUBJECT_ID="${INPUT_BASENAME%.nii.gz}"
+        fi
+        EXPECTED_EMBEDDING_PATH="$EMBEDDING_DIR/${SUBJECT_ID}_encoder_embeddings.pt"
+        EXPECTED_COORDS_PATH="$COORDS_DIR/${SUBJECT_ID}_encoder_coords.pt"
+        if [ -f "$EXPECTED_EMBEDDING_PATH" ] && [ -f "$EXPECTED_COORDS_PATH" ]; then
+            echo "Embedding and coords already exist for ${INPUT_BASENAME}. Skipping."
+            SKIP_COUNT=$((SKIP_COUNT+1))
+            continue
         fi
         if [ -n "$MAX_FILES" ] && [ "$COUNT" -ge "$MAX_FILES" ]; then
             echo "Reached $MAX_FILES files. Stopping."
@@ -137,24 +153,32 @@ for BATCH_ID in $(seq "$BATCH_START" "$BATCH_END"); do
         else
             echo "Processing ($((COUNT+1))): $INPUT_FILE"
         fi
-        python "$REPO_DIR/scripts/extract_embeddings.py" --study_path "$INPUT_FILE" --modality "$MODALITY" --output_base_dir "$BASE_OUT_DIR"
+        python "$REPO_DIR/scripts/extract_embeddings.py" --study_path "$INPUT_FILE" --modality "$MODALITY" --output_base_dir "$EMBEDDING_DIR" --coords_output_dir "$COORDS_DIR"
         COUNT=$((COUNT+1))
         echo "Finished processing $INPUT_FILE"
         echo "--------------------------------------------------------"
     done
 
-    echo "Ensuring remote output directories exist..."
-    rclone mkdir "$REMOTE_NIFTI_PATH"
-    rclone mkdir "$REMOTE_EMBEDDING_PATH"
+    if [ "$COUNT" -eq 0 ] && [ "$SKIP_COUNT" -gt 0 ]; then
+        echo "Batch ${BATCH_ID} is already complete locally."
+    else
+        echo "Batch ${BATCH_ID}: generated ${COUNT} embedding files, skipped ${SKIP_COUNT} existing files."
+    fi
 
-    echo "Uploading converted .nii.gz files to ${REMOTE_NIFTI_PATH} ..."
-    rclone copy "$NIFTI_DIR" "$REMOTE_NIFTI_PATH" --include "*.nii.gz"
+    # echo "Ensuring remote output directories exist..."
+    # rclone mkdir "$REMOTE_NIFTI_PATH"
+    # rclone mkdir "$REMOTE_EMBEDDING_PATH"
 
-    echo "Uploading embedding .pt files to ${REMOTE_EMBEDDING_PATH} ..."
-    rclone copy "$EMBEDDING_DIR" "$REMOTE_EMBEDDING_PATH" --include "*.pt"
+    # echo "Uploading converted .nii.gz files to ${REMOTE_NIFTI_PATH} ..."
+    # rclone copy "$NIFTI_DIR" "$REMOTE_NIFTI_PATH" --include "*.nii.gz"
 
+    # echo "Uploading embedding .pt files to ${REMOTE_EMBEDDING_PATH} ..."
+    # rclone copy "$EMBEDDING_DIR" "$REMOTE_EMBEDDING_PATH" --include "*.pt"
+    echo "Uploading coords .pt files to ${REMOTE_COORDS_PATH} ..."
+    rclone copy "$COORDS_DIR" "$REMOTE_COORDS_PATH" --include "*.pt"
+    
     echo "Upload complete. Cleaning local batch files..."
-    rm -rf "$INPUT_NPY_DIR" "$NIFTI_DIR" "$BASE_OUT_DIR"
+    rm -rf "$NIFTI_DIR" "$EMBEDDING_DIR" "$COORDS_DIR"
 done
 
 echo "All embedding jobs completed successfully."
