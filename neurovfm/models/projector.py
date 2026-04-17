@@ -65,71 +65,55 @@ class CustomSequential(nn.Sequential):
                 input = module(input)
         return input
 
+
 class MLP(nn.Module):
-    """
-    Multi-layer perceptron with flexible architecture.
-    
-    General-purpose MLP with configurable hidden layers, normalization, and activation.
-    
-    Args:
-        in_dim (int): Input dimension
-        out_dim (int): Output dimension
-        hidden_dims (List[int]): List of hidden layer dimensions
-        norm (str, optional): Normalization type ('bn', 'syncbn', 'csyncbn', 'ln')
-        act (str): Activation function ('relu', 'gelu'). Defaults to 'gelu'.
-    
-    Example:
-        >>> from neurovfm.models import MLP
-        >>> 
-        >>> # Create 3-layer MLP
-        >>> mlp = MLP(
-        ...     in_dim=768,
-        ...     out_dim=2,
-        ...     hidden_dims=[512, 256],
-        ...     norm='ln',
-        ...     act='gelu'
-        ... )
-        >>> 
-        >>> # Forward pass
-        >>> features = torch.randn(32, 768)
-        >>> logits = mlp(features)  # [32, 2]
-    
-    Notes:
-        - Each hidden layer: Linear → [Norm] → Activation
-        - Final layer: Linear (no norm/activation)
-        - Supports flexible depth via hidden_dims list
-    """
-    def __init__(self, in_dim: int, out_dim: int, hidden_dims: List[int], norm: str = None, act: str = 'gelu'):
+    def __init__(self, in_dim: int, out_dim: int, hidden_dims: List[int] = None, norm: str = None, act: str = 'gelu',
+                 num_layers: int = None, hidden_dim: int = None, dropout: float = 0.0, weight_init: str = "trunc_normal"):
+        
         super().__init__()
         self.out_dim = out_dim
-        
+        self.weight_init = weight_init
+
         act_layer = self._build_act(act)
+
+        if hidden_dims is None:
+            if num_layers is not None and hidden_dim is not None:
+                hidden_dims = [hidden_dim] * num_layers
+            else:
+                hidden_dims = []  
+        else:
+            pass
+
         layers = []
-        
-        # Build layers using dimensions from hidden_dims list
         prev_dim = in_dim
-        for hidden_dim in hidden_dims:
-            layers.append(nn.Linear(prev_dim, hidden_dim))
+
+        for h_dim in hidden_dims:
+            layers.append(nn.Linear(prev_dim, h_dim))
             if norm:
-                layers.append(self._build_norm(norm, hidden_dim))
+                layers.append(self._build_norm(norm, h_dim))
             layers.append(act_layer)
-            prev_dim = hidden_dim
-            
-        # Final output layer
+            if dropout > 0:
+                layers.append(nn.Dropout(dropout))
+            prev_dim = h_dim
+
         layers.append(nn.Linear(prev_dim, out_dim))
-        
+
         self.mlp = nn.Sequential(*layers)
         self.apply(self._init_weights)
-    
+
     def _init_weights(self, m):
-        """Initialize linear layer weights."""
         if isinstance(m, nn.Linear):
-            trunc_normal_(m.weight, std=.02)
+            if self.weight_init == "trunc_normal":
+                trunc_normal_(m.weight, std=0.02)
+            elif self.weight_init == "xavier":
+                nn.init.xavier_uniform_(m.weight)
+            elif self.weight_init == "kaiming":
+                nn.init.kaiming_uniform_(m.weight, nonlinearity='relu')
+
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
-    
+
     def _build_norm(self, norm, hidden_dim):
-        """Build normalization layer."""
         if norm == 'bn':
             return nn.BatchNorm1d(hidden_dim)
         elif norm == 'syncbn':
@@ -140,24 +124,14 @@ class MLP(nn.Module):
             return nn.LayerNorm(hidden_dim)
         else:
             raise ValueError(f"unknown norm type {norm}")
-    
+
     def _build_act(self, act):
-        """Build activation layer."""
         if act == 'relu':
             return nn.ReLU()
         elif act == 'gelu':
             return nn.GELU()
         else:
             raise ValueError(f"unknown act type {act}")
-    
+
     def forward(self, x):
-        """
-        Forward pass.
-        
-        Args:
-            x (torch.Tensor): Input features [B, in_dim]
-        
-        Returns:
-            torch.Tensor: Output features [B, out_dim]
-        """
         return self.mlp(x)

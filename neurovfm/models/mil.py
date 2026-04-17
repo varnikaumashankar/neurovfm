@@ -27,7 +27,7 @@ except ImportError:
     FusedDense = None
 
 # Import MLP from projector
-from neurovfm.models.projector import MLP
+from projector import MLP
 
 
 def pad_ragged(
@@ -125,16 +125,17 @@ class AggregateThenClassify(nn.Module):
         if hidden_dim is None:
             hidden_dim = dim
 
-        if FusedDense is None:
-            raise ImportError("FusedDense from flash_attn is required for MIL modules")
-
-        self.attention_V = FusedDense(dim, hidden_dim, bias=True)
+        # if FusedDense is None:
+        #     raise ImportError("FusedDense from flash_attn is required for MIL modules")
+        
+        dense = nn.Linear if FusedDense is None else FusedDense
+        self.attention_V = dense(dim, hidden_dim, bias=True)
         if use_gating:
-            self.gating_V = FusedDense(dim, hidden_dim, bias=True)
+            self.gating_V = dense(dim, hidden_dim, bias=True)
         else:
             self.gating_V = None
 
-        self.W = FusedDense(hidden_dim, W_out, bias=True)
+        self.W = dense(hidden_dim, W_out, bias=True)
         
         self.dropout = nn.Dropout(p=drop_rate)
         if use_norm:
@@ -154,6 +155,28 @@ class AggregateThenClassify(nn.Module):
         elif isinstance(m, nn.LayerNorm):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
+
+    def compute_attention_weights(self, media_attn: torch.Tensor, cu_seqlens: torch.Tensor) -> torch.Tensor:
+        """
+        Compute attention weights for each token in the bags.
+        
+        Args:
+            media_attn (torch.Tensor): Normalized and dropped-out input features [N, dim]
+            cu_seqlens (torch.Tensor): Cumulative sequence lengths [B+1]
+        
+        Returns:
+            torch.Tensor: Attention weights [N, W_out] where W_out is the number of attention heads
+        """
+        # Attention mechanism
+        attention_features = torch.tanh(self.attention_V(media_attn))
+        if self.gating_V is not None:
+            gating_features = torch.sigmoid(self.gating_V(media_attn))
+            score_features = attention_features * gating_features
+        else:
+            score_features = attention_features
+        
+        scores = self.W(score_features)  # [N, W_out]
+        return scores
 
     def forward(
         self, 
@@ -183,15 +206,7 @@ class AggregateThenClassify(nn.Module):
 
         media_attn = self.dropout(media_attn)
         
-        # Attention mechanism
-        attention_features = torch.tanh(self.attention_V(media_attn))
-        if self.gating_V is not None:
-            gating_features = torch.sigmoid(self.gating_V(media_attn))
-            score_features = attention_features * gating_features
-        else:
-            score_features = attention_features
-        
-        scores = self.W(score_features)  # [N, W_out]
+        scores = self.compute_attention_weights(media_attn, cu_seqlens)
         
         if torch_scatter is None:
             raise ImportError("torch_scatter is required for softmax attention in MIL")
