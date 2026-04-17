@@ -77,8 +77,8 @@ echo "Verifying environment..."
 python -c "import torch; print('torch=', torch.__version__, 'cuda=', torch.version.cuda)"
 python "$REPO_DIR/scripts/extract_embeddings.py" --help >/dev/null
 
-BATCH_START="${BATCH_START:-6}"
-BATCH_END="${BATCH_END:-10}"
+BATCH_START="${BATCH_START:-21}"
+BATCH_END="${BATCH_END:-30}"
 if [ -n "${BATCH_ID:-}" ]; then
     BATCH_START="$BATCH_ID"
     BATCH_END="$BATCH_ID"
