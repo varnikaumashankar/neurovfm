@@ -138,6 +138,16 @@ class AggregateThenClassify(nn.Module):
             self.gating_V = None
 
         self.W = dense(hidden_dim, W_out, bias=True)
+
+        # "2" 
+        self.linear_score = dense(dim, W_out, bias=True)
+
+        # "3"
+        self.attn_fc1 = dense(dim, hidden_dim, bias=True)
+        self.attn_fc2 = dense(hidden_dim, W_out, bias=True)
+
+        # "5"
+        self.temperature = 0.5 # The smaller, the sharper
         
         self.dropout = nn.Dropout(p=drop_rate)
         if use_norm:
