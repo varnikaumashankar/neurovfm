@@ -293,7 +293,7 @@ class MLP_v1(nn.Module):
 
             return reg_out, cls_out
 
-class MLP(nn.Module):
+class MLP_v2(nn.Module): # called during training as MLP - this is the final version
     def __init__(
         self,
         in_dim: int,
