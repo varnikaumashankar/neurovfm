@@ -1,70 +1,33 @@
-# This branch: regression head notebook workflow
+# NeuroVFM: neurovfm_baseline branch
 
-This branch is focused on a simple notebook workflow for training a regression head on top of saved NeuroVFM embeddings.
+This branch is focused on a baseline regression-head workflow on top of saved NeuroVFM encoder embeddings. It is more scriptable than the notebook-heavy regression branch and is set up for age prediction runs.
 
-The main file to look at in this branch is:
+## What is special here
 
-- `scripts/regression_head.ipynb`
+- Adds a reusable `scripts/regression_head.py` trainer for continuous targets such as age.
+- Supports three pooling choices over variable-length token embeddings: average pooling, AB-MIL, and Add-MIL.
+- Can read local embedding files or download remote embedding batches through `rclone` before training.
+- Saves practical run artifacts: `best_model.pt`, `history.json`, `val_predictions.csv`, validation metrics, and optional attention summaries for MIL runs.
+- Adds plotting and SLURM helpers for running and reviewing age regression experiments.
 
-This notebook is designed for users who want to work step by step in Jupyter instead of running the full training script from the command line.
+## Start from these files
 
-### What `regression_head.ipynb` does
+- `scripts/regression_head.py`: command-line training entry point.
+- `scripts/regression_head.ipynb`: notebook version of the same baseline workflow.
+- `scripts/plot_regression_results.py`: generates loss, prediction, age distribution, error-by-bin, and validation metric plots.
+- `scripts/submit_train_age_regression.sh`: Great Lakes job script for an age-regression run.
+- `scripts/extract_embeddings.py`: upstream embedding extraction helper.
 
-The notebook trains a small model to predict a continuous target, such as age, from precomputed NeuroVFM encoder embeddings saved on disk.
+## Expected inputs
 
-It assumes you already have:
+- A CSV or TSV label table with one row per subject.
+- A subject ID column and a continuous target column, for example `age`.
+- Embedding files named like `<subject_id>_encoder_embeddings.pt`.
 
-- a labels table with one row per subject
-- a subject ID column
-- a target column such as age
-- a directory of embedding files ending in `_encoder_embeddings.pt`
+## When to use this branch
 
-### Notebook structure
+Use `neurovfm_baseline` when you want a reproducible downstream baseline on frozen NeuroVFM embeddings, especially for age regression or another single continuous outcome.
 
-The notebook is organized as a short local workflow:
+## License
 
-1. **Introduction and setup guide**
-   - Explains the purpose of the notebook, what files you need, and which settings to edit.
-
-2. **Imports and shared definitions**
-   - Loads the Python packages and helper functions used for reading labels, loading embeddings, building datasets, and training the regression model.
-
-3. **Configuration cell**
-   - Lets you choose the labels file, embedding directory, output directory, target column, pooling method, optimization settings, and device.
-
-4. **Quick data check**
-   - Verifies how many embedding files were found, how many label rows are valid, and how many subjects match between the two.
-
-5. **Training cell**
-   - Splits the matched data into train and validation sets, computes optional feature normalization, trains the regression head, and saves outputs such as `best_model.pt`, `history.json`, and `val_predictions.csv`.
-
-6. **Plotting section**
-   - Generates summary plots from a saved run directory, including the loss curve and validation prediction plots.
-
-### How this connects to NeuroVFM
-
-This branch does **not** retrain the NeuroVFM encoder itself. Instead, it uses NeuroVFM as a frozen feature extractor upstream and trains a lightweight downstream regression model on the saved embeddings.
-
-In practice, the connection is:
-
-- NeuroVFM encoder produces study embeddings
-- embeddings are saved as `.pt` files on disk
-- `scripts/regression_head.ipynb` loads those embeddings locally
-- the notebook trains a regression head using components from `neurovfm.models`
-
-The notebook uses the NeuroVFM model building blocks already provided in this repository, including:
-
-- `MLP`
-- `AggregateThenClassify` (AB-MIL)
-- `ClassifyThenAggregate` (Add-MIL)
-
-This means the branch is useful if you want to evaluate or fine-tune a simple prediction head on top of fixed NeuroVFM representations without modifying the main encoder training pipeline.
-
-## Training
-
-Code to reproduce the main experiments in our manuscript are provided under `training/`. We provide a cached dataset feature that allows users to initially preprocess their data using our pipeline and save them as `.pt` files for faster subsequent training. For more information, see `training/README.md.`
-
-## LICENSE
-
-Code is released under the MIT License. Model weights are provided under the CC-BY-NC-SA 4.0 LICENSE on HuggingFace; please request access with your institutional email.
-
+Code is released under the MIT License. Model weights are provided under the CC-BY-NC-SA 4.0 license on HuggingFace; request access with an institutional email.
