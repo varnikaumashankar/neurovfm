@@ -1,63 +1,33 @@
-# NeuroVFM
+# NeuroVFM: model_with_regressionhead branch
 
-## Health system learning achieves generalist neuroimaging models
+This branch is for downstream prediction experiments on saved NeuroVFM embeddings. It adds regression, classification, and attention-analysis workflows without changing the shared package goal.
 
-[**Preprint**](https://arxiv.org/abs/2511.18640) / [**Interactive Demo**](https://neurovfm.mlins.org) / [**Models**](https://huggingface.co/collections/mlinslab/neurovfm) / [**MLiNS Lab**](https://mlins.org)
+## What is special here
 
-**NeuroVFM** is a health system–scale, volumetric foundation model for multimodal neuroimaging, trained with self-supervision on **5.24M** MRI/CT volumes (**567k** studies) spanning **20+ years** of routine clinical care at Michigan Medicine. 
+- Adds notebook-driven training for OpenBHB and ADNI embeddings, including regression, classification, joint objectives, diagnostics, and hyperparameter tuning.
+- Extends the MIL experiment code so AB-MIL and Add-MIL style heads can return attention weights and patch-level details for later analysis.
+- Includes experimental MLP variants for regression, classification, and dual-output heads, with configurable hidden layers, dropout, and initialization.
+- Adds attention-coordinate utilities for turning token attention into patch maps, voxel-level maps, and slice overlays.
+- Keeps root-level experiment files separate from the package modules so this branch can be used as an exploratory workspace.
 
-![NeuroVFM overview](figures/MainFig1.png)
+## Start from these files
 
-The NeuroVFM stack includes:
+- `training.ipynb`: main notebook for training and evaluating MLP heads on saved embeddings.
+- `abmil.ipynb`: AB-MIL exploration notebook.
+- `neurovfm/models/abmil.ipynb` and `neurovfm/models/abmil_classification.ipynb`: packaged notebook variants for regression and classification.
+- `mil.py`: experimental MIL heads with attention-return paths and multiple attention scoring options.
+- `projector.py`: experimental MLP heads for regression, classification, and dual tasks.
+- `coordinate.ipynb`: joins saved coordinates with attention outputs and builds attention overlays.
+- `basic_cnn.py`: small 2D regression CNN baseline.
 
-- **3D ViT encoder**, general-purpose representations for *any* clinical neuroimage (T1, T2, FLAIR, DWI, CT, etc.)
-- **Study-level diagnostic heads**, covering **74 MRI**/**82 CT** expert-defined diagnoses for *any* neuroimaging study
-- **Findings LLM**, generates preliminary findings given *any* neuroimaging study plus clinical context
-- **Reasoning API**, pass outputs to a frontier reasoning model for higher-level tasks (e.g., triage)
+## When to use this branch
 
-> **Research use only.** Not a medical device. Do not use for clinical decision-making.
+Use `model_with_regressionhead` when the main task is comparing downstream heads on fixed NeuroVFM embeddings, inspecting attention behavior, or prototyping age/regression and classification objectives in notebooks.
 
-## 🔎 TL;DR (what NeuroVFM gives you)
+## Notes
 
-NeuroVFM's defining feature is a standalone `pipelines/` package, which processes raw NIfTI/DICOM files given a study directory and returns (1) diagnostic probabilities, (2) findings, and (3) interpretation from a frontier reasoning model. All NeuroVFM models are hosted on HuggingFace; please request access [here](https://huggingface.co/collections/mlinslab/neurovfm).
+The branch expects saved encoder embeddings as inputs for most workflows. It is not the cleanest branch for package-only inference; use `main` for that.
 
-```python
-from neurovfm.pipelines import load_encoder, load_diagnostic_head, load_vlm, interpret_findings
+## License
 
-# Load pretrained models from HuggingFace
-encoder, preprocessor = load_encoder("mlinslab/neurovfm-encoder")
-dx_head = load_diagnostic_head("mlinslab/neurovfm-dx-ct")
-
-# Load and preprocess a study directory with 1+ DICOM/NIfTI files
-batch = preprocessor.load_study("/path/to/ct/study/", modality="ct")
-
-# Generate embeddings and predictions
-embeddings = encoder.embed(batch)
-predictions = dx_head.predict(embeddings, batch)
-
-# Load findings LLM
-generator, preproc = load_vlm("mlinslab/neurovfm-llm")
-vols = preproc.load_study("/path/to/study/")
-
-# clinical_context = "LOC and nausea."                  # optional clinical context
-clinical_context = None
-
-findings = generator.generate(vols, clinical_context)
-
-# optional: pass findings to external frontier LLM to interpret (e.g. clinical triage)
-api_key = "..." # requires API key (e.g., OpenAI) set in your environment
-intepretation = interpret_findings(findings, clinical_context, api_key)
-```
-
-## Installation
-
-NeuroVFM is a standard Python package built on PyTorch (compiled with CUDA 12.4). To install it, clone this repository and install with `pip` (editable or regular). For efficient 3D ViT training and inference, NeuroVFM expects **FlashAttention-2 v2.6.3** built from source (including the fused dense/MLP and DropAddNorm kernels). FlashAttention-2 only supports recent NVIDIA GPUs with Tensor Cores; see the `flash-attn` README for exact GPU, CUDA, and PyTorch compatibility.
-
-## Training
-
-Code to reproduce the main experiments in our manuscript are provided under `training/`. We provide a cached dataset feature that allows users to initially preprocess their data using our pipeline and save them as `.pt` files for faster subsequent training. For more information, see `training/README.md.`
-
-## LICENSE
-
-Code is released under the MIT License. Model weights are provided under the CC-BY-NC-SA 4.0 LICENSE on HuggingFace; please request access with your institutional email.
-
+Code is released under the MIT License. Model weights are provided under the CC-BY-NC-SA 4.0 license on HuggingFace; request access with an institutional email.
