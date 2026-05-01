@@ -1,63 +1,31 @@
-# NeuroVFM
+# NeuroVFM: npy branch
 
-## Health system learning achieves generalist neuroimaging models
+This branch adds direct support for 3D NumPy volumes, especially OpenBHB-style quasi-raw T1w `.npy` files. It is useful when the input data is already registered and should not go through the standard NIfTI/DICOM resampling path.
 
-[**Preprint**](https://arxiv.org/abs/2511.18640) / [**Interactive Demo**](https://neurovfm.mlins.org) / [**Models**](https://huggingface.co/collections/mlinslab/neurovfm) / [**MLiNS Lab**](https://mlins.org)
+## What is special here
 
-**NeuroVFM** is a health system–scale, volumetric foundation model for multimodal neuroimaging, trained with self-supervision on **5.24M** MRI/CT volumes (**567k** studies) spanning **20+ years** of routine clinical care at Michigan Medicine. 
+- Extends image loading so `load_image()` can detect `.npy` files and wrap them as SimpleITK images.
+- Uses NumPy-specific preprocessing: assign assumed spacing, skip reorientation/resampling, and crop only to patch-divisible dimensions.
+- Updates the study preprocessor so directories can contain `.npy` files alongside NIfTI or DICOM inputs.
+- Adds an example for running the encoder directly on OpenBHB quasi-raw `.npy` inputs.
+- Adds fallback implementations for FlashAttention fused dense and MLP components, plus an SDPA fallback for the language model when a CPU FlashAttention shim is detected.
 
-![NeuroVFM overview](figures/MainFig1.png)
+## Start from these files
 
-The NeuroVFM stack includes:
+- `examples/inference_encoder_npy.py`: minimal direct `.npy` encoder example.
+- `neurovfm/data/io.py`: `.npy` detection and SimpleITK wrapping.
+- `neurovfm/data/utils.py`: `crop_to_patch_divisible()` for lightweight preprocessing.
+- `neurovfm/pipelines/preprocessor.py`: includes `.npy` files in study directory discovery.
+- `neurovfm/models/vit.py`, `neurovfm/models/patch_embed.py`, and `neurovfm/models/vlm.py`: attention and fused-layer compatibility changes.
 
-- **3D ViT encoder**, general-purpose representations for *any* clinical neuroimage (T1, T2, FLAIR, DWI, CT, etc.)
-- **Study-level diagnostic heads**, covering **74 MRI**/**82 CT** expert-defined diagnoses for *any* neuroimaging study
-- **Findings LLM**, generates preliminary findings given *any* neuroimaging study plus clinical context
-- **Reasoning API**, pass outputs to a frontier reasoning model for higher-level tasks (e.g., triage)
+## When to use this branch
 
-> **Research use only.** Not a medical device. Do not use for clinical decision-making.
+Use `npy` when your volumes are already stored as 3D NumPy arrays in a standard space and converting them to NIfTI would add unnecessary preprocessing or bookkeeping.
 
-## 🔎 TL;DR (what NeuroVFM gives you)
+## Important assumptions
 
-NeuroVFM's defining feature is a standalone `pipelines/` package, which processes raw NIfTI/DICOM files given a study directory and returns (1) diagnostic probabilities, (2) findings, and (3) interpretation from a frontier reasoning model. All NeuroVFM models are hosted on HuggingFace; please request access [here](https://huggingface.co/collections/mlinslab/neurovfm).
+`.npy` files do not carry orientation, origin, or spacing metadata. This branch assumes the arrays are already in a standard orientation and assigns default spacing before tokenization.
 
-```python
-from neurovfm.pipelines import load_encoder, load_diagnostic_head, load_vlm, interpret_findings
+## License
 
-# Load pretrained models from HuggingFace
-encoder, preprocessor = load_encoder("mlinslab/neurovfm-encoder")
-dx_head = load_diagnostic_head("mlinslab/neurovfm-dx-ct")
-
-# Load and preprocess a study directory with 1+ DICOM/NIfTI files
-batch = preprocessor.load_study("/path/to/ct/study/", modality="ct")
-
-# Generate embeddings and predictions
-embeddings = encoder.embed(batch)
-predictions = dx_head.predict(embeddings, batch)
-
-# Load findings LLM
-generator, preproc = load_vlm("mlinslab/neurovfm-llm")
-vols = preproc.load_study("/path/to/study/")
-
-# clinical_context = "LOC and nausea."                  # optional clinical context
-clinical_context = None
-
-findings = generator.generate(vols, clinical_context)
-
-# optional: pass findings to external frontier LLM to interpret (e.g. clinical triage)
-api_key = "..." # requires API key (e.g., OpenAI) set in your environment
-intepretation = interpret_findings(findings, clinical_context, api_key)
-```
-
-## Installation
-
-NeuroVFM is a standard Python package built on PyTorch (compiled with CUDA 12.4). To install it, clone this repository and install with `pip` (editable or regular). For efficient 3D ViT training and inference, NeuroVFM expects **FlashAttention-2 v2.6.3** built from source (including the fused dense/MLP and DropAddNorm kernels). FlashAttention-2 only supports recent NVIDIA GPUs with Tensor Cores; see the `flash-attn` README for exact GPU, CUDA, and PyTorch compatibility.
-
-## Training
-
-Code to reproduce the main experiments in our manuscript are provided under `training/`. We provide a cached dataset feature that allows users to initially preprocess their data using our pipeline and save them as `.pt` files for faster subsequent training. For more information, see `training/README.md.`
-
-## LICENSE
-
-Code is released under the MIT License. Model weights are provided under the CC-BY-NC-SA 4.0 LICENSE on HuggingFace; please request access with your institutional email.
-
+Code is released under the MIT License. Model weights are provided under the CC-BY-NC-SA 4.0 license on HuggingFace; request access with an institutional email.
